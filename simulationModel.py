@@ -182,15 +182,19 @@ class SimulationModel:
         self.swingNodeId = self.nodeNumberMap[self.model.getSWINGNode()]
 
         for node in self.model.getTopologicalNodes():
-            # if node is connected to at least one load, treat it as a PQ node
-            isSet = False
-            for terminal in node.getTerminal():
-                if terminal.getConductingEquipment().__class__ == CIM15.IEC61970.Wires.EnergyConsumer:
-                    self.pqNodeIds.append(self.nodeNumberMap[node])
-                    isSet = True
-                    print "[MAPPING] Treating bus " + str(self.nodeNumberMap[node]) + " as a PQ Bus"
-                    break
+            if not node == self.model.getSWINGNode():
+                # if node is connected to at least one load, treat it as a PQ node
+                isSet = False
+                for terminal in node.getTerminal():
+                    if terminal.getConductingEquipment().__class__ == CIM15.IEC61970.Wires.EnergyConsumer:
+                        self.pqNodeIds.append(self.nodeNumberMap[node])
+                        isSet = True
+                        print "[MAPPING] Treating bus " + str(self.nodeNumberMap[node]) + " as a PQ Bus"
+                        break
 
-            if (isSet == False and not node == self.model.getSWINGNode()):
-                self.pvNodeIds.append(self.nodeNumberMap[node])
-                print "[MAPPING] Treating bus " + str(self.nodeNumberMap[node]) + " as a PV Bus"
+                if isSet == False:
+                    self.pvNodeIds.append(self.nodeNumberMap[node])
+                    print "[MAPPING] Treating bus " + str(self.nodeNumberMap[node]) + " as a PV Bus"
+            else:
+                print "[MAPPING] Treating bus " + str(self.nodeNumberMap[node]) + " as a slack Bus"
+

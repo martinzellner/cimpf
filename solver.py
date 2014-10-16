@@ -13,16 +13,15 @@ def solve(model):
     y = model.y
     v = transpose(model.v)
 
+    vmagnitude = abs(v)
+    vangle = angle(v)
+
     # calculate selection vectors for the different bus types
-    pv = zeros(model.numberOfBusses, dtype=int)
-    pq = zeros(model.numberOfBusses, dtype=int)
-    pvpq = zeros(model.numberOfBusses, dtype=int)
-    for i in model.pvNodeIds:
-        pv[i] = 1
-        pvpq[i] = 1
-    for i in model.pqNodeIds:
-        pq[i] = 1
-        pvpq[i] = 1
+    pv = model.pvNodeIds
+    pq = model.pqNodeIds
+    pvpq = pv
+    for pqbus in pq:
+        pvpq.append(pqbus)
 
     # check for initial optimium
     if check(v, y, s):
@@ -30,7 +29,7 @@ def solve(model):
 
     # do the NR iterations
     iterationNr = 0
-    while iterationNr < 20 and not check(v, y, s):
+    while iterationNr < 10 and not check(v, y, s):
         iterationNr += 1
 
         # Calc Jacobian
@@ -38,13 +37,24 @@ def solve(model):
 
         # calculate power mismatch
         mis = dot(dot(y, v), v) - s
-        x_mis = concatenate((real(mis), imag(mis)))
+        realMis = real(mis)[ix_(pvpq)]
+        imagMis = imag(mis)[ix_(pq)]
+        x_mis = hstack([realMis, imagMis])
 
+        #print "Mismatch is size " + str(shape(x_mis))
         # solve power flow and calculate new voltages
-        v = complex((-1) * linalg.solve(j, x_mis))
+        vtemp = (-1) * linalg.solve(j, x_mis)
 
+        # update voltages
+        vangle_new = vtemp[0:len(pvpq)]
+        vmagnitude_new = vtemp[len(pvpq):len(pvpq) + len(pq)]
+        for i in range(0, len(vangle_new)):
+            vangle[i] += vangle_new[i]
+        for i in range(0, len(vmagnitude_new)):
+            vmagnitude[i] += vmagnitude_new[i]
 
-        print v
+        v = vmagnitude * exp(1j*vangle)
+        #print "Voltage after iteration " + str(iterationNr) + ": " + str(v)
 
 
 def calculateJacobian(y, v, pv, pq, pvpq):
@@ -65,18 +75,16 @@ def calculateJacobian(y, v, pv, pq, pvpq):
     dS_dVa = complex(
         0, 1) * dot(diagV, conjugate(diag(i) - dot(y, diag(v))))
 
-    # FIXME
-    j11 = real(dS_dVa[pvpq, pvpq])
-    j12 = real(dS_dVm[pvpq, pq])
-    j21 = imag(dS_dVa[pq, pvpq])
-    j22 = imag(dS_dVm[pq, pq])
+    j11 = real(dS_dVa[ix_(pvpq, pvpq)])
+    j12 = real(dS_dVm[ix_(pvpq, pq)])
+    j21 = imag(dS_dVa[ix_(pq, pvpq)])
+    j22 = imag(dS_dVm[ix_(pq, pq)])
 
-    j1 = append(j11, j12)
-    print j1
-    j2 = append(j21, j22)
-    print j2
-    j = concatenate((j1, j2), 1)
+    j1 = hstack([j11, j12])
+    j2 = hstack([j21, j22])
+    j = vstack([j1, j2])
 
+    #print "Jacobian is size: " + str(shape(j))
     return j
 
 
@@ -89,7 +97,7 @@ def check(v, y, s):
     tol = 1.0e-6
 
     # check mismatch
-    mis = dot(dot(y, v), v) - s
+    mis = dot(conjugate(dot(y, v)), v) - s
 
     realmis = real(mis)
     imagmis = imag(mis)
